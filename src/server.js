@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const dotenv = require('dotenv');
+const mongoose = require('mongoose');
 
 dotenv.config();
 
@@ -39,12 +40,26 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health Check API
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'healthy',
+  const isDbConnected = mongoose.connection.readyState === 1;
+  res.status(isDbConnected ? 200 : 503).json({
+    status: isDbConnected ? 'healthy' : 'database_disconnected',
+    database: isDbConnected ? 'connected' : 'disconnected',
     system: 'My Clinic API',
     time: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
   });
+});
+
+// Database Connection Guard: Fail fast with clear message instead of 10s buffering timeout
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database connection is not available. Please verify MONGODB_URI and MongoDB status.',
+    });
+  }
+  next();
 });
 
 // API Routes
