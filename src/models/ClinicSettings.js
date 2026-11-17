@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
 
+const galleryItemSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  category: { type: String, default: 'Facilities' },
+  imageUrl: { type: String, required: true },
+  description: { type: String, default: '' },
+  isFeatured: { type: Boolean, default: true },
+  displayOrder: { type: Number, default: 0 },
+});
+
 const clinicSettingsSchema = new mongoose.Schema(
   {
     clinicName: {
@@ -54,6 +63,7 @@ const clinicSettingsSchema = new mongoose.Schema(
       headerText: { type: String, default: 'My Clinic Multi-Specialty Outpatient Department' },
       footerText: { type: String, default: 'Not valid for medico-legal purposes. Follow prescribed regimen strictly.' },
     },
+    gallery: [galleryItemSchema],
   },
   { timestamps: true }
 );

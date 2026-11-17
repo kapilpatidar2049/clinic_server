@@ -23,6 +23,7 @@ const salaryRoutes = require('./routes/salaryRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const clinicRoutes = require('./routes/clinicRoutes');
 
 const app = express();
 
@@ -75,6 +76,7 @@ app.use('/api/salary', salaryRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/clinic', clinicRoutes);
 
 // Error Handling Middleware
 app.use(errorHandler);
