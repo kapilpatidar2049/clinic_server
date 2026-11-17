@@ -99,16 +99,23 @@ exports.getAvailableSlots = async (req, res, next) => {
 
     const bookedSlotTimes = new Set(bookedAppointments.map((a) => a.slotTime));
 
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = date === todayStr;
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
     const slots = [];
     let token = 1;
     for (let current = startMins; current + duration <= endMins; current += duration) {
       const slotTimeStr = minutesToTime(current);
       const isBooked = bookedSlotTimes.has(slotTimeStr);
+      const isPastOrTooSoon = isToday && current < currentMinutes + 30;
 
       slots.push({
         tokenNumber: token,
         slotTime: slotTimeStr,
-        isAvailable: !isBooked,
+        isAvailable: !isBooked && !isPastOrTooSoon,
+        isPast: isPastOrTooSoon,
       });
       token++;
     }
@@ -149,6 +156,20 @@ exports.bookAppointment = async (req, res, next) => {
     const doctor = await DoctorProfile.findById(doctorId).populate('userId', 'name');
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    }
+
+    // Check minimum 30-minute advance notice for same-day bookings
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (date === todayStr) {
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const slotMinutes = timeToMinutes(slotTime);
+      if (slotMinutes < currentMinutes + 30) {
+        return res.status(400).json({
+          success: false,
+          message: 'Appointment must be booked at least 30 minutes in advance from the current time.',
+        });
+      }
     }
 
     // Double-booking check
