@@ -65,12 +65,17 @@ exports.getAvailableSlots = async (req, res, next) => {
       });
     }
 
-    // 2. Check day of week schedule
-    const appointmentDate = new Date(date);
+    // 2. Check day of week schedule (safe date parsing for all timezones)
+    const [year, month, day] = date.split('-').map(Number);
+    const appointmentDate = new Date(year, month - 1, day);
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const selectedDay = dayNames[appointmentDate.getDay()];
 
-    const daySchedule = doctor.clinicTimings.find((t) => t.day === selectedDay && t.isWorking);
+    let daySchedule = doctor.clinicTimings?.find((t) => t.day === selectedDay && t.isWorking);
+    if (!daySchedule && (!doctor.clinicTimings || doctor.clinicTimings.length === 0) && selectedDay !== 'Sunday') {
+      daySchedule = { day: selectedDay, startTime: '10:00 AM', endTime: '02:00 PM', isWorking: true };
+    }
+
     if (!daySchedule) {
       return res.json({
         success: true,
@@ -192,14 +197,27 @@ exports.bookAppointment = async (req, res, next) => {
       populate: { path: 'userId', select: 'name email phone' },
     });
 
-    // Create In-App Notification
+    // Create In-App Notification for Patient
     await Notification.create({
       recipient: patientId,
       title: 'Appointment Confirmed',
       message: `Your appointment with Dr. ${doctor.userId.name} is confirmed for ${date} at ${slotTime}. Token #${token}.`,
       type: 'appointment',
-      link: `/appointments/${newAppointment._id}`,
+      link: '/patient/appointments',
     });
+
+    // Create In-App Notification for Doctor
+    const patientName = newAppointment.patientId?.name || req.user.name || 'A patient';
+    const doctorUserId = doctor.userId?._id || doctor.userId;
+    if (doctorUserId) {
+      await Notification.create({
+        recipient: doctorUserId,
+        title: 'New Appointment Booked',
+        message: `New consultation booked by ${patientName} for ${date} at ${slotTime}. Token #${token}. Reason: ${symptoms || 'General Checkup'}`,
+        type: 'appointment',
+        link: '/doctor',
+      });
+    }
 
     // Log action
     await AuditLog.create({
@@ -304,7 +322,22 @@ exports.updateAppointmentStatus = async (req, res, next) => {
       title: `Appointment Status: ${status}`,
       message: `Your appointment on ${appointment.date} at ${appointment.slotTime} has been marked as ${status}.`,
       type: 'appointment',
+      link: '/patient/appointments',
     });
+
+    // Notify doctor if cancelled
+    if (status === 'Cancelled' && appointment.doctorId) {
+      const doc = await DoctorProfile.findById(appointment.doctorId).select('userId');
+      if (doc && doc.userId) {
+        await Notification.create({
+          recipient: doc.userId,
+          title: 'Appointment Cancelled',
+          message: `Appointment on ${appointment.date} at ${appointment.slotTime} was cancelled${cancellationReason ? ` (${cancellationReason})` : ''}.`,
+          type: 'appointment',
+          link: '/doctor',
+        });
+      }
+    }
 
     res.json({
       success: true,
@@ -354,7 +387,19 @@ exports.rescheduleAppointment = async (req, res, next) => {
       title: 'Appointment Rescheduled',
       message: `Your appointment has been rescheduled to ${newDate} at ${newSlotTime}.`,
       type: 'appointment',
+      link: '/patient/appointments',
     });
+
+    const doc = await DoctorProfile.findById(docId).select('userId');
+    if (doc && doc.userId) {
+      await Notification.create({
+        recipient: doc.userId,
+        title: 'Appointment Rescheduled',
+        message: `An appointment was rescheduled to ${newDate} at ${newSlotTime}.`,
+        type: 'appointment',
+        link: '/doctor',
+      });
+    }
 
     res.json({
       success: true,
